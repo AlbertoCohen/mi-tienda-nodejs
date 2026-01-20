@@ -2,56 +2,175 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Mi Tienda Online</title>
-    <style>
-        /* ESTO ES CSS: Aquí defines el estilo visual */
-        body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4; }
-        h1 { text-align: center; color: #333; }
-        .grid-productos { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
-        .producto { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); width: 200px; text-align: center; }
-        .producto img { max-width: 100%; height: auto; border-radius: 5px; }
-        button { background-color: #28a745; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 5px; }
-        button:hover { background-color: #218838; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tienda Oficial | Mis Marcas</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <h1>Bienvenido a mi Tienda</h1>
-    <div id="contenedor-productos" class="grid-productos">
-        <p>Cargando productos...</p>
+    <header>
+        <h1>EJECUTIVO & ÜMID</h1> <div style="cursor: pointer; display: flex; align-items: center; gap: 10px;" onclick="abrirCarrito()">
+            <span>🛒</span>
+            <span id="contador-carrito">0</span>
+        </div>
+    </header>
+
+    <main class="container">
+        <h2 style="margin-bottom: 20px; font-weight: 300;">Colección Disponible</h2>
+        <div id="contenedor-productos" class="grid-productos">
+            <p style="text-align: center; width: 100%;">Cargando catálogo...</p>
+        </div>
+    </main>
+
+    <div id="modal-carrito" class="modal-overlay">
+        <div class="modal-carrito">
+            <div class="modal-header">
+                <h3>Tu Pedido</h3>
+                <button class="btn-cerrar" onclick="cerrarCarrito()">&times;</button>
+            </div>
+            
+            <div id="items-carrito">
+                </div>
+
+            <div class="total-compra">
+                Total: $<span id="precio-total">0</span>
+            </div>
+
+            <button class="btn-whatsapp" onclick="enviarPedido()">
+                Completar pedido por WhatsApp
+            </button>
+        </div>
     </div>
 
     <script>
-        // ESTO ES JAVASCRIPT (Front-End): La lógica del navegador
-        
-        // Función para pedir los productos al Back-End
+        // --- 1. ESTADO DE LA APLICACIÓN ---
+        // Intentamos recuperar el carrito de la memoria local, si no existe, empezamos vacío
+        let carrito = JSON.parse(localStorage.getItem('carrito')) || [];
+        const NUMERO_WHATSAPP = "5491168605033"; // ¡CAMBIA ESTO POR TU NÚMERO REAL! (Formato: 549 + area + numero)
+
+        // --- 2. LÓGICA DE CARGA DE PRODUCTOS ---
         async function cargarProductos() {
             try {
-                // "fetch" es como un mensajero que va al servidor y pide datos
                 const respuesta = await fetch('http://localhost:3000/api/productos');
                 const productos = await respuesta.json();
-
                 const contenedor = document.getElementById('contenedor-productos');
-                contenedor.innerHTML = ''; // Limpiar mensaje de carga
+                contenedor.innerHTML = '';
 
-                // Crear el HTML para cada producto recibido
+                if(productos.length === 0) {
+                    contenedor.innerHTML = '<p>No hay productos disponibles.</p>';
+                    return;
+                }
+
                 productos.forEach(prod => {
+                    // Creamos un objeto producto seguro para pasar a la función
+                    // "escape" evita errores con comillas en los nombres
+                    const prodString = JSON.stringify(prod).replace(/"/g, '&quot;');
+                    
                     const div = document.createElement('div');
                     div.className = 'producto';
+                    const imagenSrc = prod.imagen_url ? `http://localhost:3000/uploads/${prod.imagen_url}` : 'https://via.placeholder.com/300x400?text=Sin+Foto';
+
                     div.innerHTML = `
-                        <h3>${prod.nombre}</h3>
-                        <p>Precio: $${prod.precio}</p>
-                        <button onclick="alert('Agregado: ${prod.nombre}')">Comprar</button>
+                        <img src="${imagenSrc}" alt="${prod.nombre}">
+                        <div class="info-producto">
+                            <h3>${prod.nombre}</h3>
+                            <span class="precio">$${prod.precio}</span>
+                            <button onclick="agregarAlCarrito(${prodString})">Agregar al Carrito</button>
+                        </div>
                     `;
                     contenedor.appendChild(div);
                 });
             } catch (error) {
-                console.error("Error al cargar:", error);
+                console.error("Error de conexión:", error);
             }
         }
 
-        // Ejecutar al iniciar la página
+        // --- 3. LÓGICA DEL CARRITO ---
+
+        function agregarAlCarrito(producto) {
+            carrito.push(producto);
+            actualizarEstado();
+            // Feedback visual simple
+            const btn = event.target;
+            const textoOriginal = btn.innerText;
+            btn.innerText = "¡Agregado!";
+            setTimeout(() => btn.innerText = textoOriginal, 1000);
+        }
+
+        function eliminarDelCarrito(index) {
+            carrito.splice(index, 1); // Quita 1 elemento en la posición 'index'
+            actualizarEstado();
+            renderizarCarrito(); // Redibujar el modal
+        }
+
+        function actualizarEstado() {
+            // Guardar en memoria del navegador
+            localStorage.setItem('carrito', JSON.stringify(carrito));
+            // Actualizar numerito del header
+            document.getElementById('contador-carrito').innerText = carrito.length;
+        }
+
+        // --- 4. INTERFAZ DE USUARIO (UI) ---
+
+        function abrirCarrito() {
+            document.getElementById('modal-carrito').style.display = 'flex';
+            renderizarCarrito();
+        }
+
+        function cerrarCarrito() {
+            document.getElementById('modal-carrito').style.display = 'none';
+        }
+
+        function renderizarCarrito() {
+            const contenedor = document.getElementById('items-carrito');
+            const precioTotalEl = document.getElementById('precio-total');
+            contenedor.innerHTML = '';
+            
+            let total = 0;
+
+            if (carrito.length === 0) {
+                contenedor.innerHTML = '<p style="text-align:center">Tu carrito está vacío.</p>';
+            } else {
+                carrito.forEach((prod, index) => {
+                    total += prod.precio;
+                    contenedor.innerHTML += `
+                        <div class="item-carrito">
+                            <div>
+                                <strong>${prod.nombre}</strong><br>
+                                <small>$${prod.precio}</small>
+                            </div>
+                            <button class="btn-eliminar" onclick="eliminarDelCarrito(${index})">Eliminar</button>
+                        </div>
+                    `;
+                });
+            }
+            
+            precioTotalEl.innerText = total;
+        }
+
+        // --- 5. CHECKOUT (WHATSAPP) ---
+        function enviarPedido() {
+            if (carrito.length === 0) return alert("Agrega productos primero.");
+
+            // Armamos el mensaje de texto
+            let mensaje = "Hola! Quiero realizar el siguiente pedido:%0A%0A"; // %0A es salto de línea
+            let total = 0;
+
+            carrito.forEach(prod => {
+                mensaje += `- ${prod.nombre} ($${prod.precio})%0A`;
+                total += prod.precio;
+            });
+
+            mensaje += `%0A*Total a pagar: $${total}*`;
+            mensaje += "%0A%0AQuedo a la espera para coordinar el pago y envío.";
+
+            // Redirigimos a WhatsApp Web/App
+            window.open(`https://wa.me/${NUMERO_WHATSAPP}?text=${mensaje}`, '_blank');
+        }
+
+        // Iniciar app
         cargarProductos();
+        actualizarEstado(); // Para recuperar el número al recargar
     </script>
 </body>
 </html>

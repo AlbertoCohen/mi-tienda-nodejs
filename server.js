@@ -6,7 +6,8 @@ const path = require('path');
 const fs = require('fs'); // Necesario para borrar fotos del disco
 
 const app = express();
-const PORT = 3000;
+// Busca si la nube nos dio un puerto, si no, usa el 3000
+const PORT = process.env.PORT || 3000;
 
 // Configuración CORS más segura (Permite solo tu propio origen en producción)
 app.use(cors()); 

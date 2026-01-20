@@ -17,10 +17,21 @@ app.use(express.static(path.join(__dirname)));
 // --- CONFIGURACIÓN DE ALMACENAMIENTO ---
 const storage = multer.diskStorage({
     destination: 'uploads/',
-    filename: (req, file, cb) => {
+    /*filename: (req, file, cb) => {
         // Sanitizar nombre de archivo (quitar espacios raros)
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
+        cb(null, uniqueSuffix + path.extname(file.originalname));*/
+        
+        filename: (req, file, cb) => {
+        // 1. Obtenemos solo la extensión (ej: .jpg)
+        const extension = path.extname(file.originalname);
+        
+        // 2. Creamos un nombre corto: 'img-' + milisegundos actuales + extension
+        // Resultado ejemplo: img-1705698123456.jpg (Siempre tendrá el mismo largo seguro)
+        const nombreCorto = `img-${Date.now()}${extension}`;
+        
+        cb(null, nombreCorto);
+    }
     }
 });
 const upload = multer({ 

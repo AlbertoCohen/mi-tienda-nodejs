@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 // Configuración CORS más segura (Permite solo tu propio origen en producción)
 app.use(cors()); 
 app.use(express.json());
+app.use(express.static(path.join(__dirname)));
 
 // --- CONFIGURACIÓN DE ALMACENAMIENTO ---
 const storage = multer.diskStorage({

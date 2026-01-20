@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel de Control - Master Admin</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; display: grid; gap: 20px; }
+        
+        /* Tarjetas */
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        
+        /* Formulario */
+        input { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        
+        /* Tabla */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; }
+        .btn-delete { background: #dc3545; color: white; padding: 5px 10px; font-size: 12px; }
+        .btn-delete:hover { background: #c82333; }
+        .thumb { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <h2>Crear Producto</h2>
+        <form id="form-producto">
+            <input type="text" id="nombre" placeholder="Nombre del producto" required>
+            <input type="number" id="precio" placeholder="Precio ($)" min="0" required>
+            <input type="file" id="imagen" accept="image/*">
+            <button type="submit">Guardar Producto</button>
+        </form>
+        <p id="mensaje"></p>
+    </div>
+
+    <div class="card">
+        <h2>Inventario Actual</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Foto</th>
+                    <th>Producto</th>
+                    <th>Precio</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody id="lista-productos">
+                </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const API_URL = 'http://localhost:3000/api';
+
+    // 1. Cargar productos en la tabla
+    async function cargarInventario() {
+        const res = await fetch(`${API_URL}/productos`);
+        const productos = await res.json();
+        
+        const tbody = document.getElementById('lista-productos');
+        tbody.innerHTML = '';
+
+        productos.forEach(prod => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    ${prod.imagen_url 
+                        ? `<img src="${API_URL}/../uploads/${prod.imagen_url}" class="thumb">` 
+                        : '<span>Sin foto</span>'}
+                </td>
+                <td>${prod.nombre}</td>
+                <td>$${prod.precio}</td>
+                <td>
+                    <button class="btn-delete" onclick="eliminarProducto(${prod.id})">Eliminar</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // 2. Función para eliminar
+    async function eliminarProducto(id) {
+        if(!confirm('¿Estás seguro de eliminar este producto?')) return;
+
+        try {
+            const res = await fetch(`${API_URL}/admin/eliminar/${id}`, { method: 'DELETE' });
+            if(res.ok) {
+                cargarInventario(); // Recargar la tabla
+            } else {
+                alert('Error al eliminar');
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    // 3. Guardar Producto
+    document.getElementById('form-producto').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append('nombre', document.getElementById('nombre').value);
+        formData.append('precio', document.getElementById('precio').value);
+        formData.append('imagen', document.getElementById('imagen').files[0]);
+
+        const res = await fetch(`${API_URL}/admin/nuevo`, { method: 'POST', body: formData });
+        
+        if(res.ok) {
+            document.getElementById('form-producto').reset();
+            cargarInventario(); // Actualizar la tabla abajo automáticamente
+            alert('Guardado con éxito');
+        } else {
+            const err = await res.json();
+            alert('Error: ' + err.error);
+        }
+    });
+
+    // Iniciar
+    cargarInventario();
+</script>
+
+</body>
+</html>

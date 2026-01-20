@@ -1,0 +1,13 @@
+# Dependencias (se instalan con npm install)
+node_modules/
+
+# Bases de datos locales
+*.db
+*.sqlite
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Carpeta de subidas (no queremos subir las fotos de prueba al código fuente)
+uploads/

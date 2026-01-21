@@ -72,7 +72,7 @@
             tr.innerHTML = `
                 <td>
                     ${prod.imagen_url 
-                        ? `<img src="${API_URL}/../uploads/${prod.imagen_url}" class="thumb">` 
+                        ? `<img src="${prod.imagen_url}" class="thumb">` 
                         : '<span>Sin foto</span>'}
                 </td>
                 <td>${prod.nombre}</td>

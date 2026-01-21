@@ -68,8 +68,8 @@
                     
                     const div = document.createElement('div');
                     div.className = 'producto';
-                    const imagenSrc = prod.imagen_url ? `/uploads/${prod.imagen_url}` : 'https://via.placeholder.com/300x400?text=Sin+Foto';
-
+                    // Si hay URL, úsala tal cual. Si no, pon la imagen por defecto.
+                    const imagenSrc = prod.imagen_url ? prod.imagen_url : 'https://via.placeholder.com/300x400?text=Sin+Foto';
                     div.innerHTML = `
                         <img src="${imagenSrc}" alt="${prod.nombre}">
                         <div class="info-producto">

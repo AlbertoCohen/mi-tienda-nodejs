@@ -1,6 +1,9 @@
-# Dependencias (se instalan con npm install)
+# Dependencias
 node_modules/
 
+# Variables de entorno (SECRETOS - NO SUBIR NUNCA)
+.env
+    
 # Bases de datos locales
 *.db
 *.sqlite
@@ -9,5 +12,5 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Carpeta de subidas (no queremos subir las fotos de prueba al código fuente)
+# Carpeta de subidas (ahora usaremos Cloudinary)
 uploads/

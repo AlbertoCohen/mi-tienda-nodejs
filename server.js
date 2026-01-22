@@ -11,7 +11,9 @@ const PORT = process.env.PORT || 3000;
 
 // 1. HELMET: Oculta info del servidor y protege cabeceras HTTP
 // (Evita que hackers sepan que usas Express y exploten vulnerabilidades conocidas)
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false // Permite cargar fotos de Cloudinary sin problemas
+}));
 
 // 2. RATE LIMIT: Evita ataques de fuerza bruta o DDoS
 // (Si alguien hace más de 100 peticiones en 15 minutos, lo bloqueamos)

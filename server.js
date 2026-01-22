@@ -9,40 +9,6 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 1. HELMET: Oculta info del servidor y protege cabeceras HTTP
-// (Evita que hackers sepan que usas Express y exploten vulnerabilidades conocidas)
-// contentSecurityPolicy: false -> Permite scripts inline (tu <script>) y fotos externas (Cloudinary)
-// crossOriginEmbedderPolicy: false -> A veces necesario para cargar recursos cruzados
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
-// 2. RATE LIMIT: Evita ataques de fuerza bruta o DDoS
-// (Si alguien hace más de 100 peticiones en 15 minutos, lo bloqueamos)
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // Límite por IP
-  message: "Demasiadas peticiones desde esta IP, intenta de nuevo en 15 min."
-});
-app.use(limiter);
-
-// 3. CORS RESTRINGIDO (Importante para producción)
-// Ahora mismo tienes cors() que permite TODO.
-// Cambialo por esto cuando tengas tu dominio real:
-/*
-const whitelist = ['https://mitienda.com', 'https://tu-frontend.onrender.com'];
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (whitelist.indexOf(origin) !== -1 || !origin) {
-      callback(null, true)
-    } else {
-      callback(new Error('Bloqueado por CORS'))
-    }
-  }
-}
-app.use(cors(corsOptions));
-*/
-// Por ahora deja app.use(cors()) hasta que tengas dominio, pero tenlo en mente.
 
 // --- Middlewares Globales ---
 app.use(cors()); // Permite conexiones externas

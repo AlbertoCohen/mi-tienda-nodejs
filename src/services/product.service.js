@@ -1,60 +1,101 @@
 // src/services/product.service.js
+//Aquí conectamos Cloudinary y aseguramos las ventas.
+const { pool } = require('../config/db'); // Importamos POOL para transacciones
 const productDAO = require('../daos/product.dao');
 const cloudinary = require('../config/cloudinary');
 const fs = require('fs');
+const AppError = require('../utils/AppError');
 
 class ProductService {
 
-    async listarProductos() {
-        return await productDAO.getAll();
+    async listarProductos(filtros) {
+        return await productDAO.seleccionar(filtros);
+    }
+
+    async obtenerDetalle(id) {
+        return await productDAO.getById(id);
     }
 
     async crearProducto(data, filePath) {
         let imagenUrl = null;
-
-        // 1. Si viene un archivo, lo subimos a la nube
+        
+        // Subida de imagen a Cloudinary
         if (filePath) {
             try {
-                // Subimos a Cloudinary
-                const resultado = await cloudinary.uploader.upload(filePath, {
-                    folder: "tienda_online_v1" // Carpeta en tu Cloudinary
+                const res = await cloudinary.uploader.upload(filePath, { 
+                    folder: "tienda_v3_pro",
+                    transformation: [{ width: 800, crop: "limit" }] // Optimización de imagen
                 });
+                imagenUrl = res.secure_url;
                 
-                // Guardamos la URL segura (https)
-                imagenUrl = resultado.secure_url; 
-                
-                // IMPORTANTE: Borrar el archivo local temporal
-                // Si no hacemos esto, el servidor se llenará de basura
-                try {
-                    fs.unlinkSync(filePath);
-                } catch (unlinkError) {
-                    console.error("Error borrando archivo temporal:", unlinkError);
-                }
+                // Borramos el archivo temporal del servidor
+                try { fs.unlinkSync(filePath); } catch (e) { console.error("Error borrando tmp:", e); }
 
             } catch (error) {
-                console.error("Error subiendo a Cloudinary:", error);
-                // Si falla la subida de imagen, ¿queremos cancelar todo?
-                // Por ahora lanzamos error para que no se cree el producto sin foto
-                throw new Error("Fallo al subir la imagen a la nube");
+                console.error("Error Cloudinary:", error);
+                throw new AppError("Fallo al subir imagen a la nube", 500);
             }
         }
-
-        // 2. Guardamos la info en la Base de Datos
-        return await productDAO.create(data.nombre, data.precio, imagenUrl);
+        return await productDAO.create(data, imagenUrl);
     }
 
     async eliminarProducto(id) {
-        // Obtenemos el producto para ver si tiene foto y borrarla de la nube
-        const producto = await productDAO.getById(id);
-        
-        if (!producto) {
-            throw new Error("Producto no encontrado");
-        }
+        const borrado = await productDAO.delete(id);
+        if (!borrado) throw new AppError("Producto no encontrado o ya eliminado", 404);
+        return borrado;
+    }
 
-        // (Opcional Avanzado) Aquí podrías agregar lógica para borrar la foto de Cloudinary
-        // usando cloudinary.uploader.destroy(...), pero por ahora simplifiquemos.
+    /**
+     * --- TRANSACCIÓN ACID DE VENTA ---
+     * Garantiza integridad entre dinero y stock.
+     */
+    async registrarVenta(ventaData) {
+        const client = await pool.connect(); // Pedimos un cliente exclusivo del pool
         
-        return await productDAO.delete(id);
+        try {
+            await client.query('BEGIN'); // 1. INICIAR TRANSACCIÓN
+
+            // Paso A: Restar Stock Atomico
+            // La condición "AND stock >= $1" actúa como bloqueo de seguridad
+            const updateStock = `
+                UPDATE inventario 
+                SET stock = stock - $1 
+                WHERE producto_id = $2 AND color = $3 AND talle = $4 AND stock >= $1
+                RETURNING id
+            `;
+            const resUpdate = await client.query(updateStock, [
+                ventaData.cantidad, ventaData.producto_id, ventaData.color, ventaData.talle
+            ]);
+
+            if (resUpdate.rowCount === 0) {
+                throw new AppError("Stock insuficiente o variante no encontrada", 409); // 409 Conflict
+            }
+
+            // Paso B: Guardar Registro de Venta
+            const insertVenta = `
+                INSERT INTO ventas (producto_id, detalle_variante, cantidad, precio_final)
+                VALUES ($1, $2, $3, $4)
+                RETURNING *
+            `;
+            const detalle = `${ventaData.color} ${ventaData.talle}`;
+            
+            const resVenta = await client.query(insertVenta, [
+                ventaData.producto_id, detalle, ventaData.cantidad, ventaData.total
+            ]);
+
+            await client.query('COMMIT'); // 2. CONFIRMAR (Si llegamos aquí, todo es perfecto)
+            return resVenta.rows[0];
+
+        } catch (error) {
+            await client.query('ROLLBACK'); // 3. DESHACER (Si algo falló, el stock vuelve atrás)
+            throw error; // Re-lanzamos el error para que el controller lo vea
+        } finally {
+            client.release(); // Liberar cliente al pool
+        }
+    }
+
+    async obtenerConfig(clave) {
+        return await productDAO.getConfig(clave);
     }
 }
 

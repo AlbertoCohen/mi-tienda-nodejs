@@ -1,84 +1,67 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-require('dotenv').config();
-
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+require('dotenv').config();
+
+// Importamos manejo de errores y DB
+const errorHandler = require('./src/middlewares/errorHandler');
+const AppError = require('./src/utils/AppError');
+const { initDB, pool } = require('./src/config/db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 1. HELMET: Oculta info del servidor y protege cabeceras HTTP
-// (Evita que hackers sepan que usas Express y exploten vulnerabilidades conocidas)
-// contentSecurityPolicy: false -> Permite scripts inline (tu <script>) y fotos externas (Cloudinary)
-// crossOriginEmbedderPolicy: false -> A veces necesario para cargar recursos cruzados
+// --- 1. SEGURIDAD (Blindaje del Servidor) ---
+
+// Helmet: Protege cabeceras HTTP.
+// Desactivamos CSP para permitir imágenes externas (Cloudinary) y scripts inline.
 app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
 }));
-// 2. RATE LIMIT: Evita ataques de fuerza bruta o DDoS
-// (Si alguien hace más de 100 peticiones en 15 minutos, lo bloqueamos)
+
+// Rate Limit: Evita ataques de fuerza bruta (DDoS)
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // Límite por IP
-  message: "Demasiadas peticiones desde esta IP, intenta de nuevo en 15 min."
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 100, // Límite de 100 peticiones por IP
+    message: "Demasiadas peticiones desde esta IP, intenta en 15 minutos."
 });
-app.use(limiter);
+app.use('/api', limiter); // Solo limitamos la API, no el frontend estático
 
-// 3. CORS RESTRINGIDO (Importante para producción)
-// Ahora mismo tienes cors() que permite TODO.
-// Cambialo por esto cuando tengas tu dominio real:
-/*
-const whitelist = ['https://mitienda.com', 'https://tu-frontend.onrender.com'];
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (whitelist.indexOf(origin) !== -1 || !origin) {
-      callback(null, true)
-    } else {
-      callback(new Error('Bloqueado por CORS'))
-    }
-  }
-}
-app.use(cors(corsOptions));
-*/
-// Por ahora deja app.use(cors()) hasta que tengas dominio, pero tenlo en mente.
+// CORS: Permite peticiones desde cualquier origen (ajustar en producción real)
+app.use(cors());
 
-// --- Middlewares Globales ---
-app.use(cors()); // Permite conexiones externas
-app.use(express.json()); // Permite leer JSON en el body
+// --- 2. MIDDLEWARES GLOBALES ---
+app.use(express.json()); // Parseo de JSON en el body
+app.use(express.static(path.join(__dirname))); // Servir archivos estáticos (Frontend)
 
-// Servir archivos estáticos del Front-End (HTML, CSS, JS)
-// Esto permite que al entrar a la web veas tu página
-app.use(express.static(path.join(__dirname)));
-
-// --- Rutas de la API ---
+// --- 3. RUTAS ---
 const productRoutes = require('./src/routes/product.routes');
 app.use('/api', productRoutes);
 
-// --- Inicialización de Base de Datos (Script Automático) ---
-// Como no usamos migraciones complejas, esto crea la tabla si no existe al arrancar
-const db = require('./src/config/db');
+// Manejo de Rutas No Encontradas (404)
+app.all('*', (req, res, next) => {
+    next(new AppError(`No se encontró la ruta ${req.originalUrl} en este servidor`, 404));
+});
 
-async function initDB() {
-    try {
-        await db.query(`
-            CREATE TABLE IF NOT EXISTS productos (
-                id SERIAL PRIMARY KEY,
-                nombre TEXT NOT NULL,
-                precio NUMERIC NOT NULL,
-                imagen_url TEXT
-            );
-        `);
-        console.log('✅ Base de datos sincronizada (Tabla productos lista)');
-    } catch (error) {
-        console.error('❌ Error crítico iniciando la DB:', error);
-        // No matamos el proceso, pero avisamos que sin DB no funcionará bien
-    }
-}
+// --- 4. MANEJO DE ERRORES CENTRALIZADO ---
+app.use(errorHandler);
 
-// Arrancar el servidor
-app.listen(PORT, async () => {
-    await initDB();
-    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+// --- 5. ARRANQUE DEL SERVIDOR ---
+const server = app.listen(PORT, async () => {
+    await initDB(); // Inicializar tablas e índices
+    console.log(`🚀 Servidor Profesional corriendo en puerto ${PORT}`);
+});
+
+// --- 6. GRACEFUL SHUTDOWN (Apagado Seguro) ---
+// Captura señales de terminación para cerrar conexiones DB antes de morir
+process.on('SIGTERM', () => {
+    console.log('👋 SIGTERM recibido. Cerrando servidor...');
+    server.close(() => {
+        console.log('💥 Servidor cerrado.');
+        pool.end(); // Cerrar conexión a PostgreSQL
+    });
 });

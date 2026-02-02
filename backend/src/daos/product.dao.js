@@ -125,6 +125,11 @@ class ProductDAO {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
             RETURNING *;
         `;
+
+        console.log("---------------- ALERTA DE DEBUG ----------------");
+        console.log("SQL QUE SE ESTÁ EJECUTANDO:", sqlProd);
+        console.log("-------------------------------------------------");
+        
         const resProd = await query(sqlProd, [
             data.nombre, 
             data.precio, // El frontend manda 'precio', nosotros lo guardamos en 'precio_base'

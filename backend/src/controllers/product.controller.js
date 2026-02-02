@@ -8,8 +8,7 @@ const AppError = require('../utils/AppError');
 // --- LECTURA ---
 
 exports.getProductos = catchAsync(async (req, res, next) => {
-    // req.query contiene: ?temporada=verano&talle=S&page=1
-    // Pasamos todo directo al DAO inteligente
+    // Pasa los filtros (query params) directo al DAO inteligente
     const productos = await productService.listarProductos(req.query);
     
     res.status(200).json({
@@ -40,18 +39,26 @@ exports.getConfig = catchAsync(async (req, res, next) => {
 
 // --- ESCRITURA (ADMIN) ---
 
+// --- ESCRITURA (ADMIN) - VERSIÓN DEBUG ---
 exports.createProducto = catchAsync(async (req, res, next) => {
-    // req.file viene de Multer, req.body viene validado por Zod
+    console.log("------------------------------------------");
+    console.log("🔍 DEBUG: Intentando crear producto");
+    console.log("📂 Archivo recibido:", req.file ? "SÍ" : "NO");
+    console.log("📝 Datos del Body:", req.body);
+    console.log("------------------------------------------");
+
+    // 1. Capturamos archivo
     const filePath = req.file ? req.file.path : null;
     
+    // 2. Crear
     const nuevoProducto = await productService.crearProducto(req.body, filePath);
 
+    // 3. Responder
     res.status(201).json({
         status: 'success',
         data: nuevoProducto
     });
 });
-
 exports.deleteProducto = catchAsync(async (req, res, next) => {
     await productService.eliminarProducto(req.params.id);
     
@@ -64,9 +71,8 @@ exports.deleteProducto = catchAsync(async (req, res, next) => {
 // --- TRANSACCIONES (VENTAS) ---
 
 exports.crearVenta = catchAsync(async (req, res, next) => {
-    // Validación básica manual (Zod podría hacer esto también)
     if (!req.body.producto_id || !req.body.cantidad) {
-        return next(new AppError('Faltan datos de la venta', 400));
+        return next(new AppError('Faltan datos de la venta (producto_id, cantidad)', 400));
     }
 
     // Ejecuta la transacción ACID

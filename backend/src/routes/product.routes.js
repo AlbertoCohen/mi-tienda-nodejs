@@ -1,43 +1,27 @@
-// src/routes/product.routes.js
-//Define los endpoints finales.
-
 const express = require('express');
 const router = express.Router();
+const publicCatalogController = require('../controllers/public.catalog.controller');
+const validate = require('../middlewares/validator');
+const { saleSchema } = require('../utils/schemas');
 
-// Importamos controladores y middlewares
-const productController = require('../controllers/product.controller');
-const upload = require('../middlewares/upload');
-const { validarProducto } = require('../middlewares/validator');
+// --- RUTAS PÚBLICAS (Lectura) ---
 
-// --- RUTAS PÚBLICAS (Cliente) ---
+// 1. Catálogo General
+router.get('/', publicCatalogController.getProducts);
 
-// Catálogo inteligente (Soporta ?temporada=verano&talle=S&limit=10)
-router.get('/productos', productController.getProductos);
+// 2. Configuración (IMPORTANTE: Debe ir ANTES de /:id)
+router.get('/config', publicCatalogController.getConfig);
 
-// Detalle de producto
-router.get('/productos/:id', productController.getProductoDetalle);
-
-// Configuración Global (Para saber si es Navidad/Verano)
-router.get('/config', productController.getConfig);
+// 3. Detalle de Producto (Recibe un ID dinámico)
+router.get('/:id', publicCatalogController.getProductoDetalle);
 
 
-// --- RUTAS TRANSACCIONALES (Ventas) ---
+// --- RUTAS DE VENTAS ---
 
-// Registrar venta (Descuenta stock atómicamente)
-router.post('/ventas/nueva', productController.crearVenta);
-
-
-// --- RUTAS ADMIN (Gestión) ---
-
-// Crear Producto: 1. Sube Foto -> 2. Valida Datos -> 3. Crea en DB
-router.post('/admin/nuevo', 
-    upload.single('imagen'), // Multer procesa el archivo primero
-    validarProducto,         // Zod valida que el precio no sea -50
-    productController.createProducto // El controlador ejecuta
+// 4. Registrar Venta (Validado con Zod)
+router.post('/ventas/nueva', 
+    validate(saleSchema), 
+    publicCatalogController.crearVenta
 );
-
-// Eliminar Producto (Soft Delete)
-router.delete('/admin/eliminar/:id', productController.deleteProducto);
-
 
 module.exports = router;

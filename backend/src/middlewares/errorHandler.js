@@ -2,18 +2,40 @@
 /*Captura cualquier error del sistema, lo limpia y responde al cliente de 
 forma segura (sin mostrar detalles técnicos de tu servidor).*/
 
-const AppError = require('../utils/AppError');
+const { ZodError } = require('zod');
 
-module.exports = (err, req, res, next) => {
+const errorHandler = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
 
-    // Log para el desarrollador (Visible en el dashboard de Render)
-    console.error('💥 ERROR CAPTURADO:', err);
+    console.error('💥 ERROR:', err);
 
-    // Respuesta segura para el cliente
+    // 1. Manejo de Errores de Validación Zod
+    if (err instanceof ZodError) {
+        return res.status(400).json({
+            status: 'fail',
+            message: 'Error de validación de datos',
+            errors: err.errors.map(e => ({
+                field: e.path.join('.'),
+                message: e.message
+            }))
+        });
+    }
+
+    // 2. Errores de PostgreSQL (Duplicados)
+    if (err.code === '23505') {
+        return res.status(409).json({
+            status: 'fail',
+            message: 'El registro ya existe (dato duplicado).'
+        });
+    }
+
+    // 3. Respuesta Genérica
     res.status(err.statusCode).json({
         status: err.status,
-        message: err.isOperational ? err.message : 'Algo salió mal en el servidor. Intenta más tarde.'
+        message: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
 };
+
+module.exports = errorHandler;

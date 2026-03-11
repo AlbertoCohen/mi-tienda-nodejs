@@ -62,7 +62,8 @@ const updateProduct = catchAsync(async (req, res, next) => {
 
         const atributos = data.atributos ? JSON.stringify(data.atributos) : '{}';
         
-        const query = `
+        // Renombrado a updateQuery para evitar colisiones
+        const updateQuery = `
             UPDATE productos 
             SET nombre = $1,
                 precio_base = $2,
@@ -76,7 +77,7 @@ const updateProduct = catchAsync(async (req, res, next) => {
             RETURNING *
         `;
         
-        const values = [
+        const updateValues = [
             data.nombre, 
             data.precio, 
             newImageUrl, 
@@ -88,7 +89,7 @@ const updateProduct = catchAsync(async (req, res, next) => {
             id
         ];
 
-        const result = await client.query(query, values);
+        const result = await client.query(updateQuery, updateValues);
 
         res.status(200).json({
             status: 'success',
@@ -110,7 +111,7 @@ const deleteProducto = catchAsync(async (req, res, next) => {
     res.status(200).json({ status: 'success', message: 'Producto eliminado (Soft Delete)' });
 });
 
-// 4. AGREGAR VARIANTE A PRODUCTO
+// 4. AGREGAR VARIANTE A PRODUCTO (INVENTARIO DINÁMICO)
 const addVariant = catchAsync(async (req, res, next) => {
     const { id } = req.params; // producto_id
     const { talle, color, stock_disponible, sku } = req.body;
@@ -122,32 +123,26 @@ const addVariant = catchAsync(async (req, res, next) => {
     const client = await pool.connect();
 
     try {
-        // Verificar que el producto padre existe y no está eliminado
         const prodRes = await client.query('SELECT id, nombre FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]);
         
         if (prodRes.rows.length === 0) {
             return next(new AppError('Producto base no encontrado o ha sido eliminado.', 404));
         }
 
-        // Esto reconecta el panel de Admin con la lógica de bloqueos FOR UPDATE del Checkout.
-        const query = `
+        // Renombrado a insertQuery y uso exclusivo de la tabla 'inventario'
+        const insertQuery = `
             INSERT INTO inventario (producto_id, talle, color, stock, sku)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *
         `;
         
-        const values = [id, talle, color, stock_disponible || 0, sku || null];const query = `
-            INSERT INTO producto_variantes (producto_id, talle, color, stock_disponible, sku)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING *
-        `;
-        const values = [id, talle, color, stock_disponible || 0, sku || null];
+        const insertValues = [id, talle, color, stock_disponible || 0, sku || null];
         
-        const result = await client.query(query, values);
+        const result = await client.query(insertQuery, insertValues);
 
         res.status(201).json({
             status: 'success',
-            message: 'Variante agregada correctamente',
+            message: 'Variante agregada correctamente al inventario',
             data: {
                 producto: prodRes.rows[0].nombre,
                 variante: result.rows[0]
@@ -155,7 +150,6 @@ const addVariant = catchAsync(async (req, res, next) => {
         });
 
     } catch (error) {
-        // Capturar error de restricción UNIQUE de PostgreSQL
         if (error.code === '23505') {
             return next(new AppError('Esta variante (talle y color) o el SKU ya existe para este producto.', 409));
         }

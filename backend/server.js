@@ -16,7 +16,7 @@ const envSchema = z.object({
     CLOUDINARY_CLOUD_NAME: z.string({ required_error: "Falta CLOUDINARY_CLOUD_NAME" }),
     CLOUDINARY_API_KEY: z.string({ required_error: "Falta CLOUDINARY_API_KEY" }),
     CLOUDINARY_API_SECRET: z.string({ required_error: "Falta CLOUDINARY_API_SECRET" }),
-    JWT_SECRET: z.string({ required_error: "Falta JWT_SECRET en .env" }).min(16),
+    JWT_SECRET: z.string({ required_error: "Falta JWT_SECRET en .env" }).min(16),   
     JWT_EXPIRES_IN: z.string().default('7d')
 });
 
@@ -97,7 +97,7 @@ app.use(errorHandler);
 
 // --- 6. ARRANQUE DEL SERVIDOR ---
 
-const server = app.listen(PORT, async () => {
+const server = app.listen(PORT, '0.0.0.0', async () => {
     try {
         const client = await pool.connect();
         const res = await client.query('SELECT NOW()');

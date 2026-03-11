@@ -1,31 +1,77 @@
-const ProductService = require('../services/product.service');
 const catchAsync = require('../utils/catchAsync');
 const { pool } = require('../config/db');
 const cloudinary = require('../config/cloudinary');
 const fs = require('fs').promises;
 const AppError = require('../utils/AppError');
 
-// 1. CREAR PRODUCTO
+// ============================================================================
+// 1. CREAR PRODUCTO (Zero-Dependency & Pool Direct)
+// ============================================================================
 const createProduct = catchAsync(async (req, res, next) => {
-    const imagenUrl = req.file ? req.file.path : null;
-    const nuevoProducto = await ProductService.crearProducto(req.body, imagenUrl);
+    const data = req.body;
+    const filePath = req.file ? req.file.path : null;
+    let newImageUrl = null;
 
-    res.status(201).json({
-        status: 'success',
-        data: nuevoProducto
-    });
+    try {
+        // A. Lógica de Cloudinary (Estrictamente ANTES de la DB)
+        if (filePath) {
+            const resCloud = await cloudinary.uploader.upload(filePath, { 
+                folder: "tienda_v3_pro",
+                use_filename: true, 
+                transformation: [{ width: 800, crop: "limit" }]
+            });
+            newImageUrl = resCloud.secure_url;
+            
+            // Limpieza del archivo temporal en el disco de Render
+            await fs.unlink(filePath).catch(() => {});
+        }
+
+        // B. Inserción en PostgreSQL usando pool (Sin variables client)
+        const atributos = data.atributos ? JSON.stringify(data.atributos) : '{}';
+
+        const insertQuery = `
+            INSERT INTO productos (nombre, precio_base, imagen_url, descripcion, genero, tipo, temporada, atributos)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING *
+        `;
+        
+        const insertValues = [
+            data.nombre,
+            data.precio, // Mapeado del esquema Zod (precio en body -> precio_base en BD)
+            newImageUrl,
+            data.descripcion || null,
+            data.genero || 'unisex',
+            data.tipo || 'general',
+            data.temporada || 'neutro',
+            atributos
+        ];
+
+        const result = await pool.query(insertQuery, insertValues);
+
+        res.status(201).json({
+            status: 'success',
+            message: 'Producto creado exitosamente',
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        // Si hay error en la DB o Cloudinary, aseguramos no dejar basura local
+        if (filePath) await fs.unlink(filePath).catch(() => {});
+        return next(new AppError('Error interno al crear el producto: ' + error.message, 500));
+    }
 });
 
-// 2. ACTUALIZAR PRODUCTO (HIGIENE CLOUDINARY)
+// ============================================================================
+// 2. ACTUALIZAR PRODUCTO (Higiene de Cloudinary & Pool Direct)
+// ============================================================================
 const updateProduct = catchAsync(async (req, res, next) => {
     const { id } = req.params;
     const data = req.body;
     const filePath = req.file ? req.file.path : null;
 
-    const client = await pool.connect();
-
     try {
-        const currentProdRes = await client.query('SELECT imagen_url FROM productos WHERE id = $1', [id]);
+        // Obtenemos imagen actual usando pool directamente
+        const currentProdRes = await pool.query('SELECT imagen_url FROM productos WHERE id = $1', [id]);
         
         if (currentProdRes.rows.length === 0) {
             if (filePath) await fs.unlink(filePath).catch(() => {});
@@ -55,14 +101,13 @@ const updateProduct = catchAsync(async (req, res, next) => {
                     
                     await cloudinary.uploader.destroy(oldPublicId);
                 } catch (cloudErr) {
-                    console.warn("⚠️ Advertencia: No se pudo borrar la imagen vieja en Cloudinary:", cloudErr.message);
+                    console.warn("⚠️ Advertencia: No se pudo borrar la imagen vieja:", cloudErr.message);
                 }
             }
         }
 
         const atributos = data.atributos ? JSON.stringify(data.atributos) : '{}';
         
-        // Renombrado a updateQuery para evitar colisiones
         const updateQuery = `
             UPDATE productos 
             SET nombre = $1,
@@ -89,7 +134,7 @@ const updateProduct = catchAsync(async (req, res, next) => {
             id
         ];
 
-        const result = await client.query(updateQuery, updateValues);
+        const result = await pool.query(updateQuery, updateValues);
 
         res.status(200).json({
             status: 'success',
@@ -99,37 +144,51 @@ const updateProduct = catchAsync(async (req, res, next) => {
 
     } catch (error) {
         if (filePath) await fs.unlink(filePath).catch(() => {});
-        throw error; 
-    } finally {
-        client.release();
+        return next(new AppError('Error interno al actualizar producto: ' + error.message, 500));
     }
 });
 
-// 3. ELIMINAR PRODUCTO
+// ============================================================================
+// 3. ELIMINAR PRODUCTO (Soft Delete Integrado & Pool Direct)
+// ============================================================================
 const deleteProducto = catchAsync(async (req, res, next) => {
-    await ProductService.eliminarProducto(req.params.id);
-    res.status(200).json({ status: 'success', message: 'Producto eliminado (Soft Delete)' });
+    const { id } = req.params;
+    
+    // Ejecutamos el Soft Delete directamente aquí para evitar ProductService
+    const deleteQuery = `
+        UPDATE productos 
+        SET deleted_at = CURRENT_TIMESTAMP, activo = false 
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING id
+    `;
+    
+    const result = await pool.query(deleteQuery, [id]);
+
+    if (result.rows.length === 0) {
+        return next(new AppError('Producto no encontrado o ya estaba eliminado', 404));
+    }
+
+    res.status(200).json({ status: 'success', message: 'Producto eliminado (Soft Delete) correctamente' });
 });
 
-// 4. AGREGAR VARIANTE A PRODUCTO (INVENTARIO DINÁMICO)
+// ============================================================================
+// 4. AGREGAR VARIANTE A PRODUCTO (Inventario Dinámico & Pool Direct)
+// ============================================================================
 const addVariant = catchAsync(async (req, res, next) => {
-    const { id } = req.params; // producto_id
+    const { id } = req.params;
     const { talle, color, stock_disponible, sku } = req.body;
 
     if (!talle || !color) {
         return next(new AppError('El talle y el color son obligatorios para crear una variante.', 400));
     }
 
-    const client = await pool.connect();
-
     try {
-        const prodRes = await client.query('SELECT id, nombre FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]);
+        const prodRes = await pool.query('SELECT id, nombre FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]);
         
         if (prodRes.rows.length === 0) {
             return next(new AppError('Producto base no encontrado o ha sido eliminado.', 404));
         }
 
-        // Renombrado a insertQuery y uso exclusivo de la tabla 'inventario'
         const insertQuery = `
             INSERT INTO inventario (producto_id, talle, color, stock, sku)
             VALUES ($1, $2, $3, $4, $5)
@@ -138,7 +197,7 @@ const addVariant = catchAsync(async (req, res, next) => {
         
         const insertValues = [id, talle, color, stock_disponible || 0, sku || null];
         
-        const result = await client.query(insertQuery, insertValues);
+        const result = await pool.query(insertQuery, insertValues);
 
         res.status(201).json({
             status: 'success',
@@ -153,9 +212,7 @@ const addVariant = catchAsync(async (req, res, next) => {
         if (error.code === '23505') {
             return next(new AppError('Esta variante (talle y color) o el SKU ya existe para este producto.', 409));
         }
-        throw error;
-    } finally {
-        client.release();
+        return next(new AppError('Error al agregar variante: ' + error.message, 500));
     }
 });
 

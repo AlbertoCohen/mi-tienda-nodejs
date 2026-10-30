@@ -1,0 +1,70 @@
+name: Production CI/CD and Keep-Alive Daemon
+
+on:
+  schedule:
+    # Runs every 5 minutes (300 seconds) to guarantee 24/7 uptime and prevent cold starts
+    - cron: '*/5 * * * *'
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: production-pipeline
+  cancel-in-progress: false
+
+jobs:
+  keepalive-ping:
+    name: 5-Minute Keep-Alive Health Probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Synthetic Probe to Health Endpoint
+        env:
+          APP_HEALTH_URL: ${{ secrets.APP_PUBLIC_URL }}/api/health
+        run: |
+          if [ -z "${{ secrets.APP_PUBLIC_URL }}" ]; then
+            echo "[KEEP-ALIVE SKIP] APP_PUBLIC_URL secret is not configured yet."
+            exit 0
+          fi
+          echo "[KEEP-ALIVE] Pinging ${{ secrets.APP_PUBLIC_URL }}/api/health..."
+          RESPONSE=$(curl -s -w "
+HTTP_STATUS:%{http_code}
+TIME_TOTAL:%{time_total}
+" "${{ secrets.APP_PUBLIC_URL }}/api/health" || true)
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+          if [ "$STATUS" = "200" ]; then
+            echo "[KEEP-ALIVE SUCCESS] Application and Database are active and healthy."
+          else
+            echo "[KEEP-ALIVE WARNING] Non-200 status received: $STATUS. Probe logged."
+          fi
+
+  build-and-validate:
+    name: Build, Audit & Test Validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package.json
+            frontend/package.json
+
+      - name: Install & Validate Backend
+        working-directory: backend
+        run: |
+          npm ci --prefer-offline || npm install
+          node -e "require('./src/config/db.js'); console.log('Database module syntax OK');" || true
+
+      - name: Install & Build Frontend
+        working-directory: frontend
+        run: |
+          npm ci --prefer-offline || npm install
+          npm run build

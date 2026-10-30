@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+:root {
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  scrollbar-gutter: stable;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root {
+    --transition-theme: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                        color 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                        border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-theme: none !important;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Verano */
+html[data-season="verano"] {
+  --bg-primary: #FAF7F2;
+  --bg-surface: #FFFFFF;
+  --text-main: #1C1917;
+  --text-muted: #78716C;
+  --accent-primary: #C25E34;
+  --border-light: #E7E0D6;
+  --badge-discount-bg: #BE123C;
+  --badge-discount-text: #FFFFFF;
+}
+
+/* Invierno */
+html[data-season="invierno"] {
+  --bg-primary: #0F141C;
+  --bg-surface: #18202C;
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+  --accent-primary: #38BDF8;
+  --border-light: #2D3A4F;
+  --badge-discount-bg: #0284C7;
+  --badge-discount-text: #FFFFFF;
+}
+
+/* Efeméride: San Valentín */
+html[data-event="san_valentin"] {
+  --accent-primary: #BE123C;
+  --badge-discount-bg: #9F1239;
+  --badge-discount-text: #FFFFFF;
+}
+
+/* Efeméride: Día de Muertos */
+html[data-event="dia_de_muertos"] {
+  --accent-primary: #EA580C;
+  --badge-discount-bg: #9333EA;
+  --badge-discount-text: #FFFFFF;
+}
+
+/* Efeméride: Black Friday */
+html[data-event="black_friday"] {
+  --bg-primary: #000000;
+  --bg-surface: #121212;
+  --text-main: #FFFFFF;
+  --text-muted: #A3A3A3;
+  --accent-primary: #E2E8F0;
+  --border-light: #262626;
+  --badge-discount-bg: #E11D48;
+  --badge-discount-text: #FFFFFF;
+}
+
+button, a, input, select {
+  touch-action: manipulation;
+}
+
+.touch-stepper {
+  user-select: none;
+  -webkit-user-select: none;
+}

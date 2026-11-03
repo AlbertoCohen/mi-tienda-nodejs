@@ -1,0 +1,17 @@
+{
+  "name": "gauntlet-ecommerce-omega",
+  "version": "1.0.0",
+  "private": true,
+  "description": "E-Commerce Modular de Moda 100% Free Tier Pipeline",
+  "scripts": {
+    "install:all": "npm install && cd server && npm install && cd ../frontend && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd frontend && npm run dev",
+    "build:client": "cd frontend && npm run build",
+    "start": "cd server && npm start",
+    "test:gauntlet": "node server/src/tests/integrative_gauntlet.test.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
